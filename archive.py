@@ -41,6 +41,7 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
     absolute_target = os.path.abspath(target_dir)
 
     last_update = datetime.datetime.now()
+    logging.info('archiving %s to %s', absolute_source, absolute_target)
 
     for root, dirnames, filenames in os.walk(absolute_source, followlinks=True):
         for filename in filenames:
@@ -100,7 +101,7 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Compare BAMs')
-    parser.add_argument('--source', required=True, help='source directory containing files to archive')
+    parser.add_argument('--source', nargs='+', required=True, help='source directory containing files to archive')
     parser.add_argument('--target', required=True, help='target directory where files will be copied to')
     parser.add_argument('--dry', action='store_true', help='just log what would be done')
     parser.add_argument('--verbose', action='store_true', help='include more logging')
@@ -113,5 +114,6 @@ if __name__ == '__main__':
         logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
     logging.info('starting archiver with parameters %s...', sys.argv)
-    archive(args.source, args.target, args.dry, args.min_size)
+    for source in args.source:
+        archive(source, args.target, args.dry, args.min_size)
 
