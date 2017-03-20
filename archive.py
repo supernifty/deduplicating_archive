@@ -21,6 +21,7 @@ import sqlite3
 
 BLOCKSIZE=65536
 MIN_SIZE=1024
+UPDATE_PERIOD=10
 
 def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
     # open db  
@@ -39,11 +40,14 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
     absolute_source = os.path.abspath(source_dir)
     absolute_target = os.path.abspath(target_dir)
 
+    last_update = datetime.datetime.now()
+
     for root, dirnames, filenames in os.walk(absolute_source, followlinks=True):
         for filename in filenames:
             considered += 1
-            if considered % 1000 == 0:
+            if datetime.datetime.now() - last_update > datetime.timedelta(seconds=UPDATE_PERIOD):
                 logging.info('added %i files, considered %i files, total size %i bytes, saved size %i bytes', added, considered, source_size, saved_size)
+                last_update = datetime.datetime.now()
 
             source_file = os.path.join(root, filename)
             if os.path.islink(source_file):
@@ -69,17 +73,17 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
             target_file = os.path.join(absolute_target, h[:2], h)
             if os.path.exists(target_file) or dry and h in dry_archive: # we can symlink to the existing file
                 if dry:
-                    logging.info('would create symlink to existing file: %s -> %s', target_file, source_file)
+                    logging.debug('would create symlink to existing file: %s -> %s', target_file, source_file)
                 else:
                     os.remove(source_file)
                     os.symlink(target_file, source_file)
                     c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
                     conn.commit()
-                    logging.info('symlink to existing file: %s -> %s', source_file, target_file)
+                    logging.debug('symlink to existing file: %s -> %s', source_file, target_file)
                 saved_size += file_size
             else: # mv the file to the archive
                 if dry:
-                    logging.info('would move file to archive: %s -> %s', source_file, target_file)
+                    logging.debug('would move file to archive: %s -> %s', source_file, target_file)
                     dry_archive.add(h)
                 else:
                     if not os.path.exists(os.path.join(absolute_target, h[:2])):
