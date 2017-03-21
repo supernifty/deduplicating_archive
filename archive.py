@@ -72,7 +72,7 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
                     buf = fh.read(BLOCKSIZE)
             h = hasher.hexdigest()
             target_file = os.path.join(absolute_target, h[:2], h)
-            if os.path.exists(target_file) or dry and h in dry_archive: # we can symlink to the existing file
+            if os.path.exists(target_file) and file_size == os.stat(target_file).st_size or dry and h in dry_archive: # we can symlink to the existing file
                 if dry:
                     logging.debug('would create symlink to existing file: %s -> %s', target_file, source_file)
                 else:
