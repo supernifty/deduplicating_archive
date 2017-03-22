@@ -8,6 +8,10 @@ cp archive.py test_source/f1.py
 cp archive.py test_source/f2.py
 mkdir -p test_source/f3
 cp README.md test_source/f3
+cp archive.py test_source/f3/e1.py
+# an unreadable file
+chmod 200 test_source/f3/e1.py 
+
 mkdir -p test_target
 
 # now run the test

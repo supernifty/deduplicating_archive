@@ -64,37 +64,41 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
                 logging.debug('skipping %s: file size is %i, smaller than %i', source_file, file_size, min_size)
                 continue
 
-            hasher = hashlib.sha256()
-            with open(source_file, 'rb') as fh:
-                buf = fh.read(BLOCKSIZE)
-                while len(buf) > 0:
-                    hasher.update(buf)
+            try:
+                hasher = hashlib.sha256()
+                with open(source_file, 'rb') as fh:
                     buf = fh.read(BLOCKSIZE)
-            h = hasher.hexdigest()
-            target_file = os.path.join(absolute_target, h[:2], h)
-            if os.path.exists(target_file) and file_size == os.stat(target_file).st_size or dry and h in dry_archive: # we can symlink to the existing file
-                if dry:
-                    logging.debug('would create symlink to existing file: %s -> %s', target_file, source_file)
-                else:
-                    os.remove(source_file)
-                    os.symlink(target_file, source_file)
-                    c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
-                    conn.commit()
-                    logging.debug('symlink to existing file: %s -> %s', source_file, target_file)
-                saved_size += file_size
-            else: # mv the file to the archive
-                if dry:
-                    logging.debug('would move file to archive: %s -> %s', source_file, target_file)
-                    dry_archive.add(h)
-                else:
-                    if not os.path.exists(os.path.join(absolute_target, h[:2])):
-                        os.makedirs(os.path.join(absolute_target, h[:2]))
-                    shutil.move(source_file, target_file)
-                    current = stat.S_IMODE(os.lstat(target_file).st_mode)
-                    os.chmod(target_file, current & ~stat.S_IWUSR & ~stat.S_IWGRP & ~stat.S_IWOTH) # make the file read only
-                    os.symlink(target_file, source_file) # link to it
-                    c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
-                    conn.commit()
+                    while len(buf) > 0:
+                        hasher.update(buf)
+                        buf = fh.read(BLOCKSIZE)
+                h = hasher.hexdigest()
+                target_file = os.path.join(absolute_target, h[:2], h)
+                if os.path.exists(target_file) and file_size == os.stat(target_file).st_size or dry and h in dry_archive: # we can symlink to the existing file
+                    if dry:
+                        logging.debug('would create symlink to existing file: %s -> %s', target_file, source_file)
+                    else:
+                        os.remove(source_file)
+                        os.symlink(target_file, source_file)
+                        c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
+                        conn.commit()
+                        logging.debug('symlink to existing file: %s -> %s', source_file, target_file)
+                    saved_size += file_size
+                else: # mv the file to the archive
+                    if dry:
+                        logging.debug('would move file to archive: %s -> %s', source_file, target_file)
+                        dry_archive.add(h)
+                    else:
+                        if not os.path.exists(os.path.join(absolute_target, h[:2])):
+                            os.makedirs(os.path.join(absolute_target, h[:2]))
+                        shutil.move(source_file, target_file)
+                        current = stat.S_IMODE(os.lstat(target_file).st_mode)
+                        os.chmod(target_file, current & ~stat.S_IWUSR & ~stat.S_IWGRP & ~stat.S_IWOTH) # make the file read only
+                        os.symlink(target_file, source_file) # link to it
+                        c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
+                        conn.commit()
+            except IOError as ex:
+                logging.error('skipping %s: exception: %s', source_file, ex)
+                continue
             added += 1
     logging.info('done archiving %s to %s: %i added out of %i files considered. total size considered %i bytes, saved %i bytes', absolute_source, absolute_target, added, considered, source_size, saved_size)
                 
@@ -109,9 +113,9 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     if args.verbose:
-        logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
+        logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.DEBUG)
     else:
-        logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
+        logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
 
     logging.info('starting archiver with parameters %s...', sys.argv)
     for source in args.source:
