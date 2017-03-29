@@ -22,4 +22,4 @@ echo "real run 1"
 python archive.py --source ./test_source/ --target ./test_target/ --verbose
 
 echo "real run 2"
-python archive.py --source ./test_source/ --target ./test_target/ --verbose --min_size 128
+python archive.py --source ./test_source/ --target ./test_target/ --verbose --min_size 128 --copy

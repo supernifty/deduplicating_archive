@@ -19,11 +19,24 @@ import stat
 import sys
 import sqlite3
 
-BLOCKSIZE=65536
-MIN_SIZE=1024
-UPDATE_PERIOD=10
+BLOCKSIZE=65536 # when reading files
+MIN_SIZE=1024 # min size of file to archive
+UPDATE_PERIOD=10 # how often to log progress
 
-def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
+CHECK_BYTES=True # also look at head of file content when comparing
+USE_COPY=False
+
+def check_bytes(first_buf, target_file):
+    '''
+      additional check as well as hash
+    '''
+    with open(target_file, 'rb') as fh:
+        target_buf = fh.read(BLOCKSIZE)
+
+    return first_buf == target_buf
+
+
+def archive(source_dir, target_dir, dry, min_size=MIN_SIZE, copy=USE_COPY):
     # open db  
     conn = sqlite3.connect(os.path.join(target_dir, 'db.sqlite'))
     c = conn.cursor()
@@ -67,7 +80,7 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
             try:
                 hasher = hashlib.sha256()
                 with open(source_file, 'rb') as fh:
-                    buf = fh.read(BLOCKSIZE)
+                    first_buf = buf = fh.read(BLOCKSIZE)
                     while len(buf) > 0:
                         hasher.update(buf)
                         buf = fh.read(BLOCKSIZE)
@@ -77,6 +90,10 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
                     if dry:
                         logging.debug('would create symlink to existing file: %s -> %s', target_file, source_file)
                     else:
+                        if CHECK_BYTES and not check_bytes(first_buf, target_file):
+                            logging.error('skipping %s: check_bytes failed.', source_file)
+                            continue
+
                         os.remove(source_file)
                         os.symlink(target_file, source_file)
                         c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
@@ -90,26 +107,31 @@ def archive(source_dir, target_dir, dry, min_size=MIN_SIZE):
                     else:
                         if not os.path.exists(os.path.join(absolute_target, h[:2])):
                             os.makedirs(os.path.join(absolute_target, h[:2]))
-                        shutil.move(source_file, target_file)
+                        if copy:
+                            shutil.copy(source_file, target_file)
+                            os.remove(source_file)
+                        else:
+                            shutil.move(source_file, target_file)
                         current = stat.S_IMODE(os.lstat(target_file).st_mode)
                         os.chmod(target_file, current & ~stat.S_IWUSR & ~stat.S_IWGRP & ~stat.S_IWOTH) # make the file read only
                         os.symlink(target_file, source_file) # link to it
                         c.execute('insert into link (source, target, added) values (?, ?, ?)', (source_file, target_file, datetime.datetime.now()))
                         conn.commit()
             except IOError as ex:
-                logging.error('skipping %s: exception: %s', source_file, ex)
+                logging.warn('skipping %s: exception: %s', source_file, ex)
                 continue
             added += 1
     logging.info('done archiving %s to %s: %i added out of %i files considered. total size considered %i bytes, saved %i bytes', absolute_source, absolute_target, added, considered, source_size, saved_size)
                 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Compare BAMs')
+    parser = argparse.ArgumentParser(description='Archive files and deduplicate')
     parser.add_argument('--source', nargs='+', required=True, help='source directory containing files to archive')
     parser.add_argument('--target', required=True, help='target directory where files will be copied to')
     parser.add_argument('--dry', action='store_true', help='just log what would be done')
     parser.add_argument('--verbose', action='store_true', help='include more logging')
     parser.add_argument('--min_size', type=int, default=1024, help='minimum file size to archive')
+    parser.add_argument('--copy', action='store_true', default=False, help='copy/rm files instead of moving')
     
     args = parser.parse_args()
     if args.verbose:
@@ -119,5 +141,5 @@ if __name__ == '__main__':
 
     logging.info('starting archiver with parameters %s...', sys.argv)
     for source in args.source:
-        archive(source, args.target, args.dry, args.min_size)
+        archive(source, args.target, args.dry, args.min_size, args.copy)
 
